@@ -1,142 +1,54 @@
 import os
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.callbacks import Callback, RichProgressBar, ModelCheckpoint
+from pytorch_lightning.callbacks import Callback, RichProgressBar, ModelCheckpoint, LearningRateMonitor
+from omegaconf import OmegaConf
+from typing import List
 
 
-def build_callbacks(cfg, logger=None, phase='test', **kwargs):
+def build_callbacks(cfg: OmegaConf, logger=None, phase: str = 'train', **kwargs) -> List[Callback]:
+    """
+    Build a list of PyTorch Lightning callbacks based on the configuration.
+    """
     callbacks = []
-    logger = logger
+    
+    # Add a progress bar
+    callbacks.append(RichProgressBar())
 
-    # Rich Progress Bar
-    callbacks.append(progressBar())
-
-    # Checkpoint Callback
+    # Set up checkpointing if in training phase
     if phase == 'train':
-        callbacks.extend(getCheckpointCallback(cfg, logger=logger, **kwargs))
+        # Base checkpointing config
+        checkpoint_dir = os.path.join(cfg.FOLDER_EXP, "checkpoints")
         
-    return callbacks
+        # 1. Save the last checkpoint
+        callbacks.append(ModelCheckpoint(
+            dirpath=checkpoint_dir,
+            filename='last-{epoch}',
+            save_last=True,
+            every_n_epochs=1,
+        ))
+        
+        # 2. Save checkpoints based on a monitored metric (e.g., validation loss)
+        if cfg.LOGGER.get("MONITOR_METRIC"):
+            callbacks.append(ModelCheckpoint(
+                dirpath=checkpoint_dir,
+                filename='best-{' + cfg.LOGGER.MONITOR_METRIC + ':.4f}-{epoch}',
+                monitor=cfg.LOGGER.MONITOR_METRIC,
+                mode=cfg.LOGGER.get("MONITOR_MODE", "min"),
+                save_top_k=cfg.LOGGER.get("SAVE_TOP_K", 3),
+            ))
+            
+        # 3. Save checkpoints periodically
+        if cfg.LOGGER.get("SAVE_PERIOD"):
+            callbacks.append(ModelCheckpoint(
+                dirpath=checkpoint_dir,
+                filename='periodic-{epoch}',
+                every_n_epochs=cfg.LOGGER.SAVE_PERIOD,
+                save_on_train_epoch_end=True
+            ))
 
-def getCheckpointCallback(cfg, logger=None, **kwargs):
-    callbacks = []
-    # Logging
-    metric_monitor = {
-        "loss_total": "total/train",
-        "Train_jf": "recons/text2jfeats/train",
-        "Val_jf": "recons/text2jfeats/val",
-        "Train_rf": "recons/text2rfeats/train",
-        "Val_rf": "recons/text2rfeats/val",
-        "APE root": "Metrics/APE_root",
-        "APE mean pose": "Metrics/APE_mean_pose",
-        "AVE root": "Metrics/AVE_root",
-        "AVE mean pose": "Metrics/AVE_mean_pose",
-        "R_TOP_1": "Metrics/R_precision_top_1",
-        "R_TOP_2": "Metrics/R_precision_top_2",
-        "R_TOP_3": "Metrics/R_precision_top_3",
-        "gt_R_TOP_3": "Metrics/gt_R_precision_top_3",
-        "FID": "Metrics/FID",
-        "gt_FID": "Metrics/gt_FID",
-        "Diversity": "Metrics/Diversity",
-        "MM dist": "Metrics/Matching_score",
-        "Accuracy": "Metrics/accuracy",
-    }
-    callbacks.append(
-        progressLogger(logger,metric_monitor=metric_monitor,log_every_n_steps=1))
-
-    # Save 10 latest checkpoints
-    checkpointParams = {
-        'dirpath': os.path.join(cfg.FOLDER_EXP, "checkpoints"),
-        'filename': "{epoch}",
-        'monitor': "step",
-        'mode': "max",
-        'every_n_epochs': cfg.LOGGER.VAL_EVERY_STEPS,
-        'save_top_k': 8,
-        'save_last': True,
-        'save_on_train_epoch_end': True
-    }
-    callbacks.append(ModelCheckpoint(**checkpointParams))
-
-    # Save checkpoint every n*10 epochs
-    checkpointParams.update({
-        'every_n_epochs':
-        cfg.LOGGER.VAL_EVERY_STEPS * 10,
-        'save_top_k':
-        -1,
-        'save_last':
-        False
-    })
-    callbacks.append(ModelCheckpoint(**checkpointParams))
-
-    metrics = cfg.METRIC.TYPE
-    metric_monitor_map = {
-        'TemosMetric': {
-            'Metrics/APE_root': {
-                'abbr': 'APEroot',
-                'mode': 'min'
-            },
-        },
-        'TM2TMetrics': {
-            'Metrics/FID': {
-                'abbr': 'FID',
-                'mode': 'min'
-            },
-            'Metrics/R_precision_top_3': {
-                'abbr': 'R3',
-                'mode': 'max'
-            }
-        },
-        'MRMetrics': {
-            'Metrics/MPJPE': {
-                'abbr': 'MPJPE',
-                'mode': 'min'
-            }
-        },
-        'HUMANACTMetrics': {
-            'Metrics/Accuracy': {
-                'abbr': 'Accuracy',
-                'mode': 'max'
-            }
-        },
-        'UESTCMetrics': {
-            'Metrics/Accuracy': {
-                'abbr': 'Accuracy',
-                'mode': 'max'
-            }
-        },
-        'UncondMetrics': {
-            'Metrics/FID': {
-                'abbr': 'FID',
-                'mode': 'min'
-            }
-        }
-    }
-
-    checkpointParams.update({
-        'every_n_epochs': cfg.LOGGER.VAL_EVERY_STEPS,
-        'save_top_k': 1,
-    })
-
-    for metric in metrics:
-        if metric in metric_monitor_map.keys():
-            metric_monitors = metric_monitor_map[metric]
-
-            # Delete R3 if training VAE
-            if cfg.TRAIN.STAGE == 'vae' and metric == 'TM2TMetrics':
-                del metric_monitors['Metrics/R_precision_top_3']
-
-            for metric_monitor in metric_monitors:
-                checkpointParams.update({
-                    'filename':
-                    metric_monitor_map[metric][metric_monitor]['mode']
-                    + "-" +
-                    metric_monitor_map[metric][metric_monitor]['abbr']
-                    + "{ep}",
-                    'monitor':
-                    metric_monitor,
-                    'mode':
-                    metric_monitor_map[metric][metric_monitor]['mode'],
-                })
-                callbacks.append(
-                    ModelCheckpoint(**checkpointParams))
+    # Add a learning rate monitor
+    callbacks.append(LearningRateMonitor(logging_interval='step'))
+    
     return callbacks
 
 class progressBar(RichProgressBar):

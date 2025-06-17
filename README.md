@@ -36,7 +36,7 @@ MotionGPT is a **unified** and **user-friendly** motion-language model to learn 
 <details>
     <summary><b>Technical details</b></summary>
 
-Though the advancement of pre-trained large language models unfolds, the exploration of building a unified model for language and other multi-modal data, such as motion, remains challenging and untouched so far. Fortunately, human motion displays a semantic coupling akin to human language, often perceived as a form of body language. By fusing language data with large-scale motion models, motion-language pre-training that can enhance the performance of motion-related tasks becomes feasible. Driven by this insight, we propose MotionGPT, a unified, versatile, and user-friendly motion-language model to handle multiple motion-relevant tasks. Specifically, we employ the discrete vector quantization for human motion and transfer 3D motion into motion tokens, similar to the generation process of word tokens. Building upon this “motion vocabulary”, we perform language modeling on both motion and text in a unified manner, treating human motion as a specific language. Moreover, inspired by prompt learning, we pre-train MotionGPT with a mixture of motion-language data and fine-tune it on prompt-based question-and-answer tasks. Extensive experiments demonstrate that MotionGPT achieves state-of-the-art performances on multiple motion tasks including text-driven motion generation, motion captioning, motion prediction, and motion in-between.
+Though the advancement of pre-trained large language models unfolds, the exploration of building a unified model for language and other multi-modal data, such as motion, remains challenging and untouched so far. Fortunately, human motion displays a semantic coupling akin to human language, often perceived as a form of body language. By fusing language data with large-scale motion models, motion-language pre-training that can enhance the performance of motion-related tasks becomes feasible. Driven by this insight, we propose MotionGPT, a unified, versatile, and user-friendly motion-language model to handle multiple motion-relevant tasks. Specifically, we employ the discrete vector quantization for human motion and transfer 3D motion into motion tokens, similar to the generation process of word tokens. Building upon this "motion vocabulary", we perform language modeling on both motion and text in a unified manner, treating human motion as a specific language. Moreover, inspired by prompt learning, we pre-train MotionGPT with a mixture of motion-language data and fine-tune it on prompt-based question-and-answer tasks. Extensive experiments demonstrate that MotionGPT achieves state-of-the-art performances on multiple motion tasks including text-driven motion generation, motion captioning, motion prediction, and motion in-between.
 
 <img width="1194" alt="pipeline" src="./assets/images/pipeline.png">
 </details>
@@ -55,148 +55,158 @@ Though the advancement of pre-trained large language models unfolds, the explora
 
 ### 1. Conda environment
 
-```
+```bash
 conda create python=3.10 --name mgpt
 conda activate mgpt
 ```
 
-Install the packages in `requirements.txt` and install [PyTorch 2.0](https://pytorch.org/)
+Install the packages in `requirements.txt` and install a compatible version of PyTorch.
 
-```
+```bash
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-We test our code on Python 3.10.6 and PyTorch 2.0.0.
+We test our code on Python 3.10 and PyTorch 2.0.0.
 
 ### 2. Dependencies
 
-Run the script to download dependencies materials:
+Run the scripts to download dependencies:
 
-```
+```bash
 bash prepare/download_smpl_model.sh
-bash prepare/prepare_t5.sh
+bash prepare/prepare_t5.sh # For T5-based models
+# For Qwen-based models, ensure you have a recent version of transformers
+# pip install transformers>=4.51.0
 ```
 
-For Text to Motion Evaluation
+For Text-to-Motion Evaluation:
 
-```
+```bash
 bash prepare/download_t2m_evaluators.sh
 ```
 
-### 3. Pre-train model
+### 3. Pre-trained models
 
-Run the script to download the pre-train model
+Run the script to download the pre-trained models:
 
-```
+```bash
 bash prepare/download_pretrained_models.sh
 ```
-
-### 4. (Optional) Download manually
-
-Visit [the Google Driver](https://drive.google.com/drive/folders/10s5HXSFqd6UTOkW2OMNc27KGmMLkVc2L) to download the previous dependencies.
-
-Visit [the Hugging Face](https://huggingface.co/OpenMotionLab) to download the pretrained models.
-
 </details>
 
 ## ▶️ Demo
 
 <details>
-  <summary><b>Webui</b></summary>
+  <summary><b>Unified Demo Script</b></summary>
 
-Run the following script to launch webui, then visit [0.0.0.0:8888](http://0.0.0.0:8888)
+The `demo.py` script is the main entry point for running inference with a trained model. It can generate motion from a text prompt and optionally render it to a video.
 
+**Usage:**
+
+```bash
+python demo.py --cfg /path/to/your/config.yaml --checkpoint /path/to/your/model.ckpt --text "your motion description" --render
 ```
-python app.py
-```
+
+**Key Arguments:**
+
+- `--cfg`: Path to the model's configuration file (e.g., a stage 3 config).
+- `--checkpoint`: Path to the trained model checkpoint (`.ckpt`).
+- `--text`: The text prompt to generate motion from.
+- `--output_dir`: (Optional) Directory to save the output files. Defaults to `./results/demo`.
+- `--render`: (Optional) If included, the script will render the generated motion to a `.mp4` video.
+- `--max_length`: (Optional) Maximum length of the generated motion.
+
+The script will save the generated motion as a `.npy` file and a corresponding `.txt` file with metadata in the output directory.
 
 </details>
 
 <details>
-  <summary><b>Batch demo</b></summary>
+  <summary><b>Unified Rendering Script</b></summary>
 
-We support txt file input, the output motions are npy files and output texts are txt files. Please check the `configs/assets.yaml` for path config, TEST.FOLDER as output folder.
+The `render.py` script can be used to render a motion file (`.npy`) to a video or GIF. It supports different motion representations.
 
-Then, run the following script:
-
+**Usage for MyoSkeleton:**
+```bash
+python render.py /path/to/your/motion.npy --render-type myoskeleton --mode skeleton
 ```
-python demo.py --cfg ./configs/config_h3d_stage3.yaml --example ./demos/t2m.txt
+
+**Usage for HumanML3D:**
+```bash
+python render.py /path/to/your/motion.npy --render-type humanml3d
 ```
 
-Some parameters:
+**Key Arguments:**
+- `motion_path`: Path to the `.npy` motion file to render.
+- `--render-type`: The representation of the motion. Choices: `myoskeleton`, `humanml3d`.
+- `--output`: (Optional) The full path for the output video/gif.
+- `--mode`: (MyoSkeleton only) The rendering mode. Choices: `skeleton`, `physics`, `mesh`.
 
-- `--example=./demo/t2m.txt`: input file as text prompts
-- `--task=t2m`: evaluation tasks including t2m, m2t, pred, inbetween
-
-The outputs:
-
-- `npy file`: the generated motions with the shape of (nframe, 22, 3)
-- `txt file`: the input text prompt or text output
 </details>
+
 
 ## 💻 Train your own models
 
 <details>
   <summary><b>Training guidance</b></summary>
 
+Training is handled by the unified `train_myoskeleton.py` script and is divided into three stages, controlled by the configuration file.
+
 ### 1. Prepare the datasets
 
-1. Please refer to [HumanML3D](https://github.com/EricGuo5513/HumanML3D) for text-to-motion dataset setup.
+1. Please refer to [HumanML3D](https://github.com/EricGuo5513/HumanML3D) for the text-to-motion dataset setup.
+2. For instruction tuning, place the instruction data from `prepare/instructions` into the same folder as the HumanML3D dataset.
 
-2. Put the instructions data in `prepare/instructions` to the same folder of HumanML3D dataset.
+### Stage 1: Train the Motion Tokenizer (VQ-VAE)
 
-### 2.1. Ready to train motion tokenizer model
+This stage is independent of the language model backbone.
 
-Please first check the parameters in `configs/config_h3d_stage1.yaml`, e.g. `NAME`,`DEBUG`.
+1.  Check the parameters in a Stage 1 config file, such as `configs/config_myoskeleton_stage1.yaml`.
+2.  Run the training command:
 
-Then, run the following command:
-
+```bash
+python train_myoskeleton.py --cfg configs/config_myoskeleton_stage1.yaml
 ```
-python -m train --cfg configs/config_h3d_stage1.yaml --nodebug
-```
+*Note: The stage is defined within the config file (`TRAIN.STAGE: 1`).*
 
-### 2.2. Ready to pretrain MotionGPT model
+### Stage 2: Pre-train the Language Model
 
-Please update the parameters in `configs/config_h3d_stage2.yaml`, e.g. `NAME`,`DEBUG`,`PRETRAINED_VAE` (change to your `latest ckpt model path` in previous step)
+This stage trains the language model (e.g., T5 or Qwen) with the frozen motion tokenizer from Stage 1.
 
-Then, run the following command to store all motion tokens of training set for convenience
+1.  Update your Stage 2 config file (e.g., `configs/config_myoskeleton_t5_stage2.yaml`).
+2.  Set `TRAIN.PRETRAINED_VAE` to the path of the `last.ckpt` file from your Stage 1 training run.
+3.  Run the training command:
 
-```
-python -m scripts.get_motion_code --cfg configs/config_h3d_stage2.yaml
-```
-
-After that, run the following command:
-
-```
-python -m train --cfg configs/config_h3d_stage2.yaml --nodebug
+```bash
+python train_myoskeleton.py --cfg /path/to/your/stage2_config.yaml
 ```
 
-### 2.3. Ready to instruct-tuning MotionGPT model
+### Stage 3: Instruction-tune the MotionGPT Model
 
-Please update the parameters in `configs/config_h3d_stage3.yaml`, e.g. `NAME`,`DEBUG`,`PRETRAINED` (change to your `latest ckpt model path` in previous step)
+This final stage fine-tunes the model for specific motion-language tasks.
 
-Then, run the following command:
+1.  Update your Stage 3 config file (e.g., `configs/config_myoskeleton_t5_stage3.yaml`).
+2.  Set `TRAIN.PRETRAINED` to the path of the `last.ckpt` file from your Stage 2 training run.
+3.  Run the training command:
 
-```
-python -m train --cfg configs/config_h3d_stage3.yaml --nodebug
-```
-
-### 3. Evaluate the model
-
-Please first put the tained model checkpoint path to `TEST.CHECKPOINT` in `configs/config_h3d_stage3.yaml`.
-
-Then, run the following command:
-
-```
-python -m test --cfg configs/config_h3d_stage3.yaml --task t2m
+```bash
+python train_myoskeleton.py --cfg /path/to/your/stage3_config.yaml
 ```
 
-Some parameters:
+### Evaluate the model
 
-- `--task`: evaluation tasks including t2m(Text-to-Motion), m2t(Motion translation), pred(Motion prediction), inbetween(Motion inbetween)
+To evaluate a trained model, use the `test.py` script.
 
-Due to the python package conflit, the released implement of linguistic metrics in motion translation task is by [nlg-metricverse](https://github.com/disi-unibo-nlp/nlg-metricverse), which may not be consistent to the results implemented by [nlg-eval](https://github.com/Maluuba/nlg-eval). We will fix this in the future.
+1.  Ensure the `TEST.CHECKPOINT` path in your config file points to your trained model.
+2.  Run the evaluation command:
+
+```bash
+python test.py --cfg /path/to/your/stage3_config.yaml --task t2m
+```
+
+**Key Arguments:**
+
+- `--task`: The evaluation task. Choices include `t2m` (Text-to-Motion), `m2t` (Motion-to-Text), `pred` (Motion Prediction), and `inbetween` (Motion In-betweening).
 
 </details>
 

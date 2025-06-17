@@ -1,444 +1,183 @@
-mmm_joints = [
-    "root",
-    "BP",
-    "BT",
-    "BLN",
-    "BUN",
-    "LS",
-    "LE",
-    "LW",
-    "RS",
-    "RE",
-    "RW",
-    "LH",
-    "LK",
-    "LA",
-    "LMrot",
-    "LF",
-    "RH",
-    "RK",
-    "RA",
-    "RMrot",
-    "RF",
-]
+# MyoSkeleton Joint Definitions - Complete replacement for SMPL
+# Based on the anatomical structure from myoskeleton.xml
 
-humanml3d_joints = [
-    "root",
-    "RH",
-    "LH",
-    "BP",
-    "RK",
-    "LK",
-    "BT",
-    "RMrot",
-    "LMrot",
-    "BLN",
-    "RF",
-    "LF",
-    "BMN",
-    "RSI",
-    "LSI",
-    "BUN",
-    "RS",
-    "LS",
-    "RE",
-    "LE",
-    "RW",
-    "LW",
-]
-
-smplx_joints = [
+myoskeleton_joints = [
+    # Root and pelvis
+    "myoskeleton_root",
     "pelvis",
-    "left_hip",
-    "right_hip",
-    "spine1",
-    "left_knee",
-    "right_knee",
-    "spine2",
-    "left_ankle",
-    "right_ankle",
-    "spine3",
-    "left_foot",
-    "right_foot",
-    "neck",
-    "left_collar",
-    "right_collar",
-    "head",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "jaw",
-    "left_eye_smplhf",
-    "right_eye_smplhf",
-    "left_index1",
-    "left_index2",
-    "left_index3",
-    "left_middle1",
-    "left_middle2",
-    "left_middle3",
-    "left_pinky1",
-    "left_pinky2",
-    "left_pinky3",
-    "left_ring1",
-    "left_ring2",
-    "left_ring3",
-    "left_thumb1",
-    "left_thumb2",
-    "left_thumb3",
-    "right_index1",
-    "right_index2",
-    "right_index3",
-    "right_middle1",
-    "right_middle2",
-    "right_middle3",
-    "right_pinky1",
-    "right_pinky2",
-    "right_pinky3",
-    "right_ring1",
-    "right_ring2",
-    "right_ring3",
-    "right_thumb1",
-    "right_thumb2",
-    "right_thumb3",
-    "nose",
-    "right_eye",
-    "left_eye",
-    "right_ear",
-    "left_ear",
-    "left_big_toe",
-    "left_small_toe",
-    "left_heel",
-    "right_big_toe",
-    "right_small_toe",
-    "right_heel",
-    "left_thumb",
-    "left_index",
-    "left_middle",
-    "left_ring",
-    "left_pinky",
-    "right_thumb",
-    "right_index",
-    "right_middle",
-    "right_ring",
-    "right_pinky",
-    "right_eye_brow1",
-    "right_eye_brow2",
-    "right_eye_brow3",
-    "right_eye_brow4",
-    "right_eye_brow5",
-    "left_eye_brow5",
-    "left_eye_brow4",
-    "left_eye_brow3",
-    "left_eye_brow2",
-    "left_eye_brow1",
-    "nose1",
-    "nose2",
-    "nose3",
-    "nose4",
-    "right_nose_2",
-    "right_nose_1",
-    "nose_middle",
-    "left_nose_1",
-    "left_nose_2",
-    "right_eye1",
-    "right_eye2",
-    "right_eye3",
-    "right_eye4",
-    "right_eye5",
-    "right_eye6",
-    "left_eye4",
-    "left_eye3",
-    "left_eye2",
-    "left_eye1",
-    "left_eye6",
-    "left_eye5",
-    "right_mouth_1",
-    "right_mouth_2",
-    "right_mouth_3",
-    "mouth_top",
-    "left_mouth_3",
-    "left_mouth_2",
-    "left_mouth_1",
-    "left_mouth_5",  # 59 in OpenPose output
-    "left_mouth_4",  # 58 in OpenPose output
-    "mouth_bottom",
-    "right_mouth_4",
-    "right_mouth_5",
-    "right_lip_1",
-    "right_lip_2",
-    "lip_top",
-    "left_lip_2",
-    "left_lip_1",
-    "left_lip_3",
-    "lip_bottom",
-    "right_lip_3",
-    # Face contour
-    "right_contour_1",
-    "right_contour_2",
-    "right_contour_3",
-    "right_contour_4",
-    "right_contour_5",
-    "right_contour_6",
-    "right_contour_7",
-    "right_contour_8",
-    "contour_middle",
-    "left_contour_8",
-    "left_contour_7",
-    "left_contour_6",
-    "left_contour_5",
-    "left_contour_4",
-    "left_contour_3",
-    "left_contour_2",
-    "left_contour_1",
+    
+    # Lumbar spine (L5-L1)
+    "lumbar_spine_5",
+    "lumbar_spine_4", 
+    "lumbar_spine_3",
+    "lumbar_spine_2",
+    "lumbar_spine_1",
+    
+    # Thoracic spine (consolidated)
+    "thoracic_spine",
+    
+    # Cervical spine (C7-C1)
+    "cervical_spine_7",
+    "cervical_spine_6",
+    "cervical_spine_5", 
+    "cervical_spine_4",
+    "cervical_spine_3",
+    "cervical_spine_2",
+    "cervical_spine_1",
+    "skull",
+    
+    # Right arm chain
+    "clavicle_r",
+    "scapula_r", 
+    "humerus_r",
+    "ulna_r",
+    "radius_r",
+    "lunate_r",
+    
+    # Right hand (simplified - key joints)
+    "metacarpal_1_r",  # thumb
+    "proximal_phalanx_1_r",
+    "distal_phalanx_1_r",
+    "metacarpal_2_r",  # index
+    "proximal_phalanx_2_r", 
+    "intermediate_phalanx_2_r",
+    "distal_phalanx_2_r",
+    "metacarpal_3_r",  # middle
+    "proximal_phalanx_3_r",
+    "intermediate_phalanx_3_r", 
+    "distal_phalanx_3_r",
+    "metacarpal_4_r",  # ring
+    "proximal_phalanx_4_r",
+    "intermediate_phalanx_4_r",
+    "distal_phalanx_4_r", 
+    "metacarpal_5_r",  # pinky
+    "proximal_phalanx_5_r",
+    "intermediate_phalanx_5_r",
+    "distal_phalanx_5_r",
+    
+    # Left arm chain (mirror of right)
+    "clavicle_l",
+    "scapula_l",
+    "humerus_l", 
+    "ulna_l",
+    "radius_l",
+    "lunate_l",
+    
+    # Left hand (simplified - key joints)
+    "metacarpal_1_l",
+    "proximal_phalanx_1_l",
+    "distal_phalanx_1_l",
+    "metacarpal_2_l",
+    "proximal_phalanx_2_l",
+    "intermediate_phalanx_2_l", 
+    "distal_phalanx_2_l",
+    "metacarpal_3_l",
+    "proximal_phalanx_3_l",
+    "intermediate_phalanx_3_l",
+    "distal_phalanx_3_l",
+    "metacarpal_4_l",
+    "proximal_phalanx_4_l",
+    "intermediate_phalanx_4_l",
+    "distal_phalanx_4_l",
+    "metacarpal_5_l", 
+    "proximal_phalanx_5_l",
+    "intermediate_phalanx_5_l",
+    "distal_phalanx_5_l",
+    
+    # Right leg chain
+    "hip_r",
+    "femur_r", 
+    "tibia_r",
+    "fibula_r",
+    "talus_r",
+    "calcaneus_r",
+    "foot_r",
+    
+    # Left leg chain  
+    "hip_l",
+    "femur_l",
+    "tibia_l", 
+    "fibula_l",
+    "talus_l",
+    "calcaneus_l",
+    "foot_l",
 ]
 
-smplxnh_joints = [
+# Simplified joint set for motion generation (key joints only)
+myoskeleton_simplified_joints = [
+    "myoskeleton_root",
     "pelvis",
-    "left_hip",
-    "right_hip",
-    "spine1",
-    "left_knee",
-    "right_knee",
-    "spine2",
-    "left_ankle",
-    "right_ankle",
-    "spine3",
-    "left_foot",
-    "right_foot",
-    "neck",
-    "left_collar",
-    "right_collar",
-    "head",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
+    "lumbar_spine_3",  # mid lumbar
+    "thoracic_spine", 
+    "cervical_spine_4", # mid cervical
+    "skull",
+    
+    # Arms (key joints)
+    "clavicle_r", "humerus_r", "ulna_r", "lunate_r",
+    "clavicle_l", "humerus_l", "ulna_l", "lunate_l", 
+    
+    # Hands (wrist + thumb + index)
+    "proximal_phalanx_1_r", "proximal_phalanx_2_r",
+    "proximal_phalanx_1_l", "proximal_phalanx_2_l",
+    
+    # Legs (key joints)
+    "hip_r", "femur_r", "tibia_r", "foot_r",
+    "hip_l", "femur_l", "tibia_l", "foot_l",
 ]
 
-smplh_joints = [
-    "pelvis",
-    "left_hip",
-    "right_hip",
-    "spine1",
-    "left_knee",
-    "right_knee",
-    "spine2",
-    "left_ankle",
-    "right_ankle",
-    "spine3",
-    "left_foot",
-    "right_foot",
-    "neck",
-    "left_collar",
-    "right_collar",
-    "head",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "left_index1",
-    "left_index2",
-    "left_index3",
-    "left_middle1",
-    "left_middle2",
-    "left_middle3",
-    "left_pinky1",
-    "left_pinky2",
-    "left_pinky3",
-    "left_ring1",
-    "left_ring2",
-    "left_ring3",
-    "left_thumb1",
-    "left_thumb2",
-    "left_thumb3",
-    "right_index1",
-    "right_index2",
-    "right_index3",
-    "right_middle1",
-    "right_middle2",
-    "right_middle3",
-    "right_pinky1",
-    "right_pinky2",
-    "right_pinky3",
-    "right_ring1",
-    "right_ring2",
-    "right_ring3",
-    "right_thumb1",
-    "right_thumb2",
-    "right_thumb3",
-    "nose",
-    "right_eye",
-    "left_eye",
-    "right_ear",
-    "left_ear",
-    "left_big_toe",
-    "left_small_toe",
-    "left_heel",
-    "right_big_toe",
-    "right_small_toe",
-    "right_heel",
-    "left_thumb",
-    "left_index",
-    "left_middle",
-    "left_ring",
-    "left_pinky",
-    "right_thumb",
-    "right_index",
-    "right_middle",
-    "right_ring",
-    "right_pinky",
+# Kinematic chains for MyoSkeleton
+myoskeleton_kinematic_tree = [
+    [0, 1, 2, 3, 4, 5],  # spine chain
+    [5, 14, 15, 16, 17, 18, 19],  # right arm
+    [5, 35, 36, 37, 38, 39, 40],  # left arm  
+    [1, 56, 57, 58, 59, 60, 61, 62],  # right leg
+    [1, 63, 64, 65, 66, 67, 68, 69],  # left leg
 ]
 
-smplnh_joints = [
-    "pelvis",
-    "left_hip",
-    "right_hip",
-    "spine1",
-    "left_knee",
-    "right_knee",
-    "spine2",
-    "left_ankle",
-    "right_ankle",
-    "spine3",
-    "left_foot",
-    "right_foot",
-    "neck",
-    "left_collar",
-    "right_collar",
-    "head",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-]
-
-mmm2smplh_correspondence = {
-    "root": "pelvis",
-    "BP": "spine1",
-    "BT": "spine3",
-    "BLN": "neck",
-    "BUN": "head",
-    "LS": "left_shoulder",
-    "LE": "left_elbow",
-    "LW": "left_wrist",
-    "RS": "right_shoulder",
-    "RE": "right_elbow",
-    "RW": "right_wrist",
-    "LH": "left_hip",
-    "LK": "left_knee",
-    "LA": "left_ankle",
-    "LMrot": "left_heel",
-    "LF": "left_foot",
-    "RH": "right_hip",
-    "RK": "right_knee",
-    "RA": "right_ankle",
-    "RMrot": "right_heel",
-    "RF": "right_foot",
+# Joint groups for constraints and analysis
+myoskeleton_joints_info = {
+    "root": myoskeleton_joints.index("myoskeleton_root"),
+    "pelvis": myoskeleton_joints.index("pelvis"),
+    "spine": [myoskeleton_joints.index(f"lumbar_spine_{i}") for i in range(5, 0, -1)] + 
+             [myoskeleton_joints.index("thoracic_spine")] +
+             [myoskeleton_joints.index(f"cervical_spine_{i}") for i in range(7, 0, -1)],
+    "head": myoskeleton_joints.index("skull"),
+    "shoulders": [myoskeleton_joints.index("clavicle_r"), myoskeleton_joints.index("clavicle_l")],
+    "hands": [myoskeleton_joints.index("lunate_r"), myoskeleton_joints.index("lunate_l")],
+    "hips": [myoskeleton_joints.index("hip_r"), myoskeleton_joints.index("hip_l")],
+    "feet": [myoskeleton_joints.index("foot_r"), myoskeleton_joints.index("foot_l")],
 }
 
-smplh2mmm_correspondence = {
-    val: key
-    for key, val in mmm2smplh_correspondence.items()
-}
-smplh2mmm_indexes = [
-    smplh_joints.index(mmm2smplh_correspondence[x]) for x in mmm_joints
-]
-
-smplnh2smplh_correspondence = {key: key for key in smplnh_joints}
-smplh2smplnh_correspondence = {
-    val: key
-    for key, val in smplnh2smplh_correspondence.items()
-}
-
-smplh2smplnh_indexes = [
-    smplh_joints.index(smplnh2smplh_correspondence[x]) for x in smplnh_joints
-]
-
-mmm_kinematic_tree = [
-    [0, 1, 2, 3, 4],  # body
-    [3, 5, 6, 7],  # right arm
-    [3, 8, 9, 10],  # left arm
-    [0, 11, 12, 13, 14, 15],  # right leg
-    [0, 16, 17, 18, 19, 20],
-]  # left leg
-
-humanml3d_kinematic_tree = [
-    [0, 3, 6, 9, 12, 15],  # body
-    [9, 14, 17, 19, 21],  # right arm
-    [9, 13, 16, 18, 20],  # left arm
-    [0, 2, 5, 8, 11],  # right leg
-    [0, 1, 4, 7, 10],
-]  # left leg
-
-smplh_to_mmm_scaling_factor = 480 / 0.75
-mmm_to_smplh_scaling_factor = 0.75 / 480
-
-mmm_joints_info = {
-    "root":
-    mmm_joints.index("root"),
-    "feet": [
-        mmm_joints.index("LMrot"),
-        mmm_joints.index("RMrot"),
-        mmm_joints.index("LF"),
-        mmm_joints.index("RF"),
-    ],
-    "shoulders": [mmm_joints.index("LS"),
-                  mmm_joints.index("RS")],
-    "hips": [mmm_joints.index("LH"),
-             mmm_joints.index("RH")],
+# Motion constraints (for realistic motion generation)
+myoskeleton_joint_limits = {
+    # Spine flexion/extension limits (in radians)
+    "lumbar_spine_5": {"flex": (-0.152, 0.044), "bend": (-0.06, 0.06), "arot": (-0.028, 0.028)},
+    "lumbar_spine_4": {"flex": (-0.226, 0.065), "bend": (-0.08, 0.08), "arot": (-0.03, 0.03)}, 
+    "lumbar_spine_3": {"flex": (-0.249, 0.071), "bend": (-0.108, 0.108), "arot": (-0.03, 0.03)},
+    "lumbar_spine_2": {"flex": (-0.282, 0.081), "bend": (-0.11, 0.11), "arot": (-0.024, 0.024)},
+    "lumbar_spine_1": {"flex": (-0.311, 0.089), "bend": (-0.083, 0.083), "arot": (-0.023, 0.023)},
+    
+    # Thoracic spine
+    "thoracic_spine": {"flex": (-0.112, 0.036), "bend": (-0.061, 0.061), "arot": (-0.646, 0.646)},
+    
+    # Cervical spine ranges
+    "cervical_spine_7": {"flex": (-0.057, 0.083), "bend": (-0.085, 0.085), "arot": (-0.063, 0.063)},
+    "cervical_spine_1": {"flex": (-0.155, 0.233), "bend": (-0.052, 0.052), "arot": (-0.044, 0.044)},
 }
 
-smplnh_joints_info = {
-    "root":
-    smplnh_joints.index("pelvis"),
-    "feet": [
-        smplnh_joints.index("left_ankle"),
-        smplnh_joints.index("right_ankle"),
-        smplnh_joints.index("left_foot"),
-        smplnh_joints.index("right_foot"),
-    ],
-    "shoulders": [
-        smplnh_joints.index("left_shoulder"),
-        smplnh_joints.index("right_shoulder"),
-    ],
-    "hips":
-    [smplnh_joints.index("left_hip"),
-     smplnh_joints.index("right_hip")],
-}
+def get_myoskeleton_root_idx():
+    """Get the root joint index for MyoSkeleton"""
+    return myoskeleton_joints_info["root"]
 
-infos = {"mmm": mmm_joints_info, "smplnh": smplnh_joints_info}
+def get_simplified_joint_count():
+    """Get the number of simplified joints for motion generation"""
+    return len(myoskeleton_simplified_joints)
 
-smplh_indexes = {"mmm": smplh2mmm_indexes, "smplnh": smplh2smplnh_indexes}
+def is_spine_joint(joint_name):
+    """Check if a joint is part of the spine chain"""
+    return any(spine_part in joint_name for spine_part in 
+               ["lumbar_spine", "thoracic_spine", "cervical_spine"])
 
-root_joints = {
-    "mmm": mmm_joints_info["root"],
-    "mmmns": mmm_joints_info["root"],
-    "smplmmm": mmm_joints_info["root"],
-    "smplnh": smplnh_joints_info["root"],
-    "smplh": smplh_joints.index("pelvis"),
-}
-
-
-def get_root_idx(joinstype):
-    return root_joints[joinstype]
-
-
-# def mmm2smpl(joints_mmm):
-#     mmm2smplnh_indexes = []
-#     for x in smplnh_joints:
-#         if x in smplh2mmm_correspondence:
-#             mmm2smplnh_indexes.append(mmm_joints.index(smplh2mmm_correspondence[x]))
-
-#     spine2 = 0.5*(joints[mmm_joints.index("spine1")] + joints[mmm_joints.index("spine3")])
-
-#     joints = joints_mmm[indexes]
-#     return joints
+def get_joint_limits(joint_name):
+    """Get motion limits for a specific joint"""
+    return myoskeleton_joint_limits.get(joint_name, None)

@@ -1,215 +1,120 @@
 import importlib
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from omegaconf import OmegaConf
 from os.path import join as pjoin
 import os
-import glob
+from typing import List, Any, Type
 
-
-def get_module_config(cfg, filepath="./configs"):
+def load_config(cfg_path: str, cli_args: List[str] = []) -> OmegaConf:
     """
-    Load yaml config files from subfolders
+    Load a configuration from a YAML file and merge it with command-line arguments.
     """
-
-    yamls = glob.glob(pjoin(filepath, '*', '*.yaml'))
-    yamls = [y.replace(filepath, '') for y in yamls]
-    for yaml in yamls:
-        nodes = yaml.replace('.yaml', '').replace(os.sep, '.')
-        nodes = nodes[1:] if nodes[0] == '.' else nodes
-        OmegaConf.update(cfg, nodes, OmegaConf.load('./configs' + yaml))
-
+    cfg = OmegaConf.load(cfg_path)
+    # Merge with CLI args
+    cli_cfg = OmegaConf.from_cli(cli_args)
+    cfg = OmegaConf.merge(cfg, cli_cfg)
     return cfg
 
-
-def get_obj_from_str(string, reload=False):
+def get_obj_from_str(string: str, reload: bool = False) -> Type[Any]:
     """
-    Get object from string
+    Get an object (class or function) from a string representation.
+    e.g., "mGPT.models.mgpt.MotionGPT" -> <class 'mGPT.models.mgpt.MotionGPT'>
     """
-
-    module, cls = string.rsplit(".", 1)
+    module_name, cls_name = string.rsplit(".", 1)
     if reload:
-        module_imp = importlib.import_module(module)
+        module_imp = importlib.import_module(module_name)
         importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
+    return getattr(importlib.import_module(module_name, package=None), cls_name)
 
 
-def instantiate_from_config(config):
+def instantiate_from_config(config: OmegaConf) -> Any:
     """
-    Instantiate object from config
+    Instantiate an object from an OmegaConf configuration.
+    Requires the config to have a "target" key with the object's path.
     """
-    if not "target" in config:
-        raise KeyError("Expected key `target` to instantiate.")
-    return get_obj_from_str(config["target"])(**config.get("params", dict()))
-
-
-def resume_config(cfg: OmegaConf):
-    """
-    Resume model and wandb
-    """
+    if "target" not in config:
+        raise KeyError("Config must have a 'target' key to specify the object to instantiate.")
     
-    if cfg.TRAIN.RESUME:
-        resume = cfg.TRAIN.RESUME
-        if os.path.exists(resume):
-            # Checkpoints
-            cfg.TRAIN.PRETRAINED = pjoin(resume, "checkpoints", "last.ckpt")
-            # Wandb
-            wandb_files = os.listdir(pjoin(resume, "wandb", "latest-run"))
-            wandb_run = [item for item in wandb_files if "run-" in item][0]
-            cfg.LOGGER.WANDB.params.id = wandb_run.replace("run-","").replace(".wandb", "")
-        else:
-            raise ValueError("Resume path is not right.")
+    params = config.get("params", {}) or {}
+    return get_obj_from_str(config["target"])(**params)
+
+
+def resume_from_checkpoint(cfg: OmegaConf) -> OmegaConf:
+    """
+    Update a configuration to resume training from a checkpoint.
+    This function is designed to be used with a specific directory structure
+    and may need adjustment for different logging/checkpointing setups.
+    """
+    if not cfg.TRAIN.get("RESUME"):
+        return cfg
+
+    resume_path = cfg.TRAIN.RESUME
+    if not os.path.isdir(resume_path):
+        raise ValueError(f"Resume path '{resume_path}' is not a valid directory.")
+
+    # Find the last checkpoint
+    checkpoint_path = pjoin(resume_path, "checkpoints", "last.ckpt")
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint 'last.ckpt' not found in '{pjoin(resume_path, 'checkpoints')}'")
+    
+    cfg.TRAIN.PRETRAINED = checkpoint_path
+    
+    # Find the wandb run ID to resume logging
+    wandb_dir = pjoin(resume_path, "wandb", "latest-run")
+    if os.path.isdir(wandb_dir):
+        wandb_files = os.listdir(wandb_dir)
+        try:
+            wandb_run_file = next(f for f in wandb_files if f.startswith("run-") and f.endswith(".wandb"))
+            wandb_id = wandb_run_file.replace("run-", "").replace(".wandb", "")
+            
+            # Update the config to resume the wandb run
+            if not cfg.get("LOGGER"):
+                cfg.LOGGER = {}
+            if not cfg.LOGGER.get("WANDB"):
+                cfg.LOGGER.WANDB = {"params": {}}
+                
+            cfg.LOGGER.WANDB.params.id = wandb_id
+            cfg.LOGGER.WANDB.params.resume = "allow"
+            
+        except StopIteration:
+            print(f"Warning: Could not find a wandb run file in '{wandb_dir}'. A new run will be started.")
 
     return cfg
 
-def parse_args(phase="train"):
-    """
-    Parse arguments and load config files
-    """
 
+def parse_args(phase: str = "train") -> OmegaConf:
+    """
+    Parse command-line arguments and load the corresponding configuration.
+    This function is now simplified and delegates most of the work to the
+    training/demo scripts themselves.
+    """
     parser = ArgumentParser()
-    group = parser.add_argument_group("Training options")
-
-    # Assets
-    group.add_argument(
-        "--cfg_assets",
-        type=str,
-        required=False,
-        default="./configs/assets.yaml",
-        help="config file for asset paths",
-    )
-
-    # Default config
-    if phase in ["train", "test", "demo"]:
-        cfg_defualt = "./configs/default.yaml"
-    elif phase == "render":
-        cfg_defualt = "./configs/render.yaml"
-    elif phase == "webui":
-        cfg_defualt = "./configs/webui.yaml"
-        
-    group.add_argument(
-        "--cfg",
-        type=str,
-        required=False,
-        default=cfg_defualt,
-        help="config file",
-    )
-
-    # Parse for each phase
-    if phase in ["train", "test"]:
-        group.add_argument("--batch_size",
-                           type=int,
-                           required=False,
-                           help="training batch size")
-        group.add_argument("--num_nodes",
-                           type=int,
-                           required=False,
-                           help="number of nodes")
-        group.add_argument("--device",
-                           type=int,
-                           nargs="+",
-                           required=False,
-                           help="training device")
-        group.add_argument("--task",
-                           type=str,
-                           required=False,
-                           help="evaluation task type")
-        group.add_argument("--nodebug",
-                           action="store_true",
-                           required=False,
-                           help="debug or not")
-
-
-    if phase == "demo":
-        group.add_argument("--task",
-            type=str,
-            required=False,
-            help="evaluation task type")
-        group.add_argument(
-            "--example",
-            type=str,
-            required=False,
-            help="input text and lengths with txt format",
-        )
-        group.add_argument(
-            "--out_dir",
-            type=str,
-            required=False,
-            help="output dir",
-        )
-
-    if phase == "render":
-        group.add_argument("--npy",
-                           type=str,
-                           required=False,
-                           default=None,
-                           help="npy motion files")
-        group.add_argument("--dir",
-                           type=str,
-                           required=False,
-                           default=None,
-                           help="npy motion folder")
-        group.add_argument("--fps",
-                    type=int,
-                    required=False,
-                    default=30,
-                    help="render fps")
-        group.add_argument(
-            "--mode",
-            type=str,
-            required=False,
-            default="sequence",
-            help="render target: video, sequence, frame",
-        )
-
-    params = parser.parse_args()
+    parser.add_argument("--cfg", type=str, required=True, help="Path to the configuration file.")
     
-    # Load yaml config files
-    OmegaConf.register_new_resolver("eval", eval)
-    cfg_assets = OmegaConf.load(params.cfg_assets)
-    cfg_base = OmegaConf.load(pjoin(cfg_assets.CONFIG_FOLDER, 'default.yaml'))
-    cfg_exp = OmegaConf.merge(cfg_base, OmegaConf.load(params.cfg))
-    if not cfg_exp.FULL_CONFIG:
-        cfg_exp = get_module_config(cfg_exp, cfg_assets.CONFIG_FOLDER)
-    cfg = OmegaConf.merge(cfg_exp, cfg_assets)
-
-    # Update config with arguments
-    if phase in ["train", "test"]:
-        cfg.TRAIN.BATCH_SIZE = params.batch_size if params.batch_size else cfg.TRAIN.BATCH_SIZE
-        cfg.DEVICE = params.device if params.device else cfg.DEVICE
-        cfg.NUM_NODES = params.num_nodes if params.num_nodes else cfg.NUM_NODES
-        cfg.model.params.task = params.task if params.task else cfg.model.params.task
-        cfg.DEBUG = not params.nodebug if params.nodebug is not None else cfg.DEBUG
-
-        # Force no debug in test
-        if phase == "test":
-            cfg.DEBUG = False
-            cfg.DEVICE = [0]
-            print("Force no debugging and one gpu when testing")
-
-    if phase == "demo":
-        cfg.DEMO.EXAMPLE = params.example
-        cfg.DEMO.TASK = params.task
-        cfg.TEST.FOLDER = params.out_dir if params.out_dir else cfg.TEST.FOLDER
-        os.makedirs(cfg.TEST.FOLDER, exist_ok=True)
-
-    if phase == "render":
-        if params.npy:
-            cfg.RENDER.NPY = params.npy
-            cfg.RENDER.INPUT_MODE = "npy"
-        if params.dir:
-            cfg.RENDER.DIR = params.dir
-            cfg.RENDER.INPUT_MODE = "dir"
-        if params.fps:
-            cfg.RENDER.FPS = float(params.fps)
-        cfg.RENDER.MODE = params.mode
-
-    # Debug mode
-    if cfg.DEBUG:
-        cfg.NAME = "debug--" + cfg.NAME
-        cfg.LOGGER.WANDB.params.offline = True
-        cfg.LOGGER.VAL_EVERY_STEPS = 1
+    # Allow unknown arguments to be parsed by OmegaConf
+    args, unknown = parser.parse_known_args()
+    
+    # Load the base configuration file
+    cfg = OmegaConf.load(args.cfg)
+    
+    # Merge with any command-line overrides
+    cli_cfg = OmegaConf.from_cli(unknown)
+    cfg = OmegaConf.merge(cfg, cli_cfg)
+    
+    # Set up debug mode if specified
+    if cfg.get("DEBUG"):
+        cfg.NAME = "debug-" + cfg.get("NAME", "default")
+        if cfg.get("LOGGER") and cfg.LOGGER.get("WANDB"):
+            cfg.LOGGER.WANDB.params.offline = True
+        if cfg.get("LOGGER"):
+            cfg.LOGGER.VAL_EVERY_STEPS = 1
+            
+    # Handle resuming from a checkpoint
+    if phase == "train" and cfg.TRAIN.get("RESUME"):
+        cfg = resume_from_checkpoint(cfg)
         
-    # Resume config
-    cfg = resume_config(cfg)
-
     return cfg
+
+# A simple function to load a config, kept for compatibility with older scripts
+def load_config_simple(cfg_path: str):
+    return OmegaConf.load(cfg_path)

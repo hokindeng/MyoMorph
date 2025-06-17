@@ -1,152 +1,74 @@
-import os
-import random
-import shutil
-import sys
-import natsort
+#!/usr/bin/env python3
+"""
+Unified Motion Renderer
+Renders motion from various representations like MyoSkeleton or HumanML3D.
+"""
+
+import argparse
+import numpy as np
 from pathlib import Path
-from argparse import ArgumentParser
+import logging
+import sys
+import os
 
-try:
-    import bpy
+# Add mGPT to path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-    sys.path.append(os.path.dirname(bpy.data.filepath))
-
-    # local packages
-    sys.path.append(os.path.expanduser("~/.local/lib/python3.9/site-packages"))
-except ImportError:
-    raise ImportError(
-        "Blender is not properly installed or not launch properly. See README.md to have instruction on how to install and use blender."
-    )
-
-
-# Monkey patch argparse such that
-# blender / python / hydra parsing works
-def parse_args(self, args=None, namespace=None):
-    if args is not None:
-        return self.parse_args_bak(args=args, namespace=namespace)
-    try:
-        idx = sys.argv.index("--")
-        args = sys.argv[idx + 1:]  # the list after '--'
-    except ValueError as e:  # '--' not in the list:
-        args = []
-    return self.parse_args_bak(args=args, namespace=namespace)
-
-
-setattr(ArgumentParser, 'parse_args_bak', ArgumentParser.parse_args)
-setattr(ArgumentParser, 'parse_args', parse_args)
-
+from mGPT.render.myoskeleton_renderer import render_myoskeleton_motion
+import mGPT.render.matplot.plot_3d_global as plot_3d
 from mGPT.config import parse_args
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def render_cli() -> None:
-    # parse options
-    cfg = parse_args(phase="render")  # parse config file
-    cfg.FOLDER = cfg.RENDER.FOLDER
 
-    if cfg.RENDER.INPUT_MODE.lower() == "npy":
-        output_dir = Path(os.path.dirname(cfg.RENDER.NPY))
-        paths = [cfg.RENDER.NPY]
-    elif cfg.RENDER.INPUT_MODE.lower() == "dir":
-        output_dir = Path(cfg.RENDER.DIR)
-        paths = []
-        file_list = natsort.natsorted(os.listdir(cfg.RENDER.DIR))
-        begin_id = random.randrange(0, len(file_list))
-        file_list = file_list[begin_id:] + file_list[:begin_id]
+def render_humanml3d(motion_path, output_path):
+    """Render HumanML3D motion to a GIF."""
+    motion_data = np.load(motion_path)
+    if len(motion_data.shape) == 3:
+        motion_data = motion_data[None]
+    
+    plot_3d.draw_to_batch(motion_data, [''], [str(output_path)])
+    return output_path
 
-        # render mesh npy first
-        for item in file_list:
-            if item.endswith("_mesh.npy"):
-                paths.append(os.path.join(cfg.RENDER.DIR, item))
 
-        # then render joint npy
-        for item in file_list:
-            if item.endswith(".npy") and not item.endswith("_mesh.npy"):
-                paths.append(os.path.join(cfg.RENDER.DIR, item))
+def main():
+    # Use the new centralized argument parser
+    cfg = parse_args(phase="render")
 
-        print(f"begin to render for {paths[0]}")
+    motion_path = Path(cfg.RENDER.MOTION_PATH)
+    if not motion_path.exists():
+        logger.error(f"Motion file not found: {motion_path}")
+        return
+        
+    if cfg.RENDER.OUTPUT:
+        output_path = Path(cfg.RENDER.OUTPUT)
+    else:
+        suffix = ".mp4" if cfg.RENDER.TYPE == "myoskeleton" else ".gif"
+        output_path = motion_path.with_suffix(suffix)
 
-    import numpy as np
+    logger.info(f"Rendering motion: {motion_path} ({cfg.RENDER.TYPE})")
+    logger.info(f"Output path: {output_path}")
 
-    from mGPT.render.blender import render
-    from mGPT.render.video import Video
-
-    init = True
-    for path in paths:
-        # check existed mp4 or under rendering
-        if cfg.RENDER.MODE == "video":
-            if os.path.exists(path.replace(".npy", ".mp4")) or os.path.exists(
-                    path.replace(".npy", "_frames")):
-                print(f"npy is rendered or under rendering {path}")
-                continue
-        else:
-            # check existed png
-            if os.path.exists(path.replace(".npy", ".png")):
-                print(f"npy is rendered or under rendering {path}")
-                continue
-
-        if cfg.RENDER.MODE == "video":
-            frames_folder = os.path.join(
-                output_dir,
-                path.replace(".npy", "_frames").split('/')[-1])
-            os.makedirs(frames_folder, exist_ok=True)
-        else:
-            frames_folder = os.path.join(
-                output_dir,
-                path.replace(".npy", ".png").split('/')[-1])
-
-        try:
-            data = np.load(path)
-            if data.shape[0] == 1:
-                data = data[0]
-        except FileNotFoundError:
-            print(f"{path} not found")
-            continue
-
-        if cfg.RENDER.MODE == "video":
-            frames_folder = os.path.join(
-                output_dir,
-                path.replace(".npy", "_frames").split("/")[-1])
-        else:
-            frames_folder = os.path.join(
-                output_dir,
-                path.replace(".npy", ".png").split("/")[-1])
-
-        out = render(
-            data,
-            frames_folder,
-            canonicalize=cfg.RENDER.CANONICALIZE,
-            exact_frame=cfg.RENDER.EXACT_FRAME,
-            num=cfg.RENDER.NUM,
-            mode=cfg.RENDER.MODE,
-            model_path=cfg.RENDER.MODEL_PATH,
-            faces_path=cfg.RENDER.FACES_PATH,
-            downsample=cfg.RENDER.DOWNSAMPLE,
-            always_on_floor=cfg.RENDER.ALWAYS_ON_FLOOR,
-            oldrender=cfg.RENDER.OLDRENDER,
-            res=cfg.RENDER.RES,
-            init=init,
-            gt=cfg.RENDER.GT,
-            accelerator=cfg.ACCELERATOR,
-            device=cfg.DEVICE,
-        )
-
-        init = False
-
-        if cfg.RENDER.MODE == "video":
-            shutil.copytree(frames_folder, frames_folder+'_img') 
-            if cfg.RENDER.DOWNSAMPLE:
-                video = Video(frames_folder, fps=cfg.RENDER.FPS)
-            else:
-                video = Video(frames_folder, fps=cfg.RENDER.FPS)
-
-            vid_path = frames_folder.replace("_frames", ".mp4")
-            video.save(out_path=vid_path)
-            shutil.rmtree(frames_folder)
-            print(f"remove tmp fig folder and save video in {vid_path}")
-
-        else:
-            print(f"Frame generated at: {out}")
+    try:
+        if cfg.RENDER.TYPE == "myoskeleton":
+            logger.info(f"Render mode: {cfg.RENDER.MYOSKELETON.MODE}")
+            result_path = render_myoskeleton_motion(
+                motion=str(motion_path),
+                output_path=str(output_path),
+                render_mode=cfg.RENDER.MYOSKELETON.MODE,
+                fps=cfg.RENDER.MYOSKELETON.FPS,
+                output_size=tuple(cfg.RENDER.MYOSKELETON.SIZE)
+            )
+        elif cfg.RENDER.TYPE == "humanml3d":
+            result_path = render_humanml3d(motion_path, output_path)
+        
+        logger.info(f"✅ Successfully rendered: {result_path}")
+        
+    except Exception as e:
+        logger.error(f"❌ Rendering failed: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
-    render_cli()
+    main() 

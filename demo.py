@@ -1,237 +1,162 @@
-import json
+#!/usr/bin/env python3
+"""
+MotionGPT Unified Demo Script
+Test a trained MotionGPT model with any supported backbone and representation.
+"""
+
+import argparse
 import os
+import sys
+import logging
 from pathlib import Path
-import time
-import numpy as np
-import pytorch_lightning as pl
 import torch
-from rich import get_console
-from rich.table import Table
-from omegaconf import OmegaConf
-from tqdm import tqdm
-from mGPT.config import parse_args
-from mGPT.data.build_data import build_data
-from mGPT.models.build_model import build_model
-from mGPT.utils.logger import create_logger
-import mGPT.render.matplot.plot_3d_global as plot_3d
+import numpy as np
+from datetime import datetime
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from mGPT.config import parse_args, instantiate_from_config
+from mGPT.render.myoskeleton_renderer import render_myoskeleton_motion
+from mGPT.render.matplot.plot_3d_global import draw_to_batch as render_humanml3d_motion
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def motion_token_to_string(motion_token, lengths, codebook_size=512):
-    motion_string = []
-    for i in range(motion_token.shape[0]):
-        motion_i = motion_token[i].cpu(
-        ) if motion_token.device.type == 'cuda' else motion_token[i]
-        motion_list = motion_i.tolist()[:lengths[i]]
-        motion_string.append(
-            (f'<motion_id_{codebook_size}>' +
-             ''.join([f'<motion_id_{int(i)}>' for i in motion_list]) +
-             f'<motion_id_{codebook_size + 1}>'))
-    return motion_string
+def load_model(cfg, checkpoint_path: str):
+    """Load a trained MotionGPT model from a checkpoint."""
+    logger.info(f"Loading model from: {checkpoint_path}")
+    
+    # Instantiate the datamodule from config to get dataset info
+    datamodule = instantiate_from_config(cfg.DATASET)
+    
+    # Instantiate the model
+    model = instantiate_from_config(cfg.model, datamodule=datamodule)
+    
+    # Load the checkpoint
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    model.load_state_dict(checkpoint['state_dict'], strict=False)
+    model.eval()
+    
+    logger.info("✅ Model loaded successfully!")
+    return model, datamodule
 
 
-def load_example_input(txt_path, task, model):
-    with open(txt_path, "r") as file:
-        Lines = file.readlines()
-    Lines = [line for line in Lines if line.strip()]
-    count = 0
-    texts = []
-    # Strips the newline character
-    motion_joints = [torch.zeros((1, 1, 22, 3))] * len(Lines)
-    motion_lengths = [0] * len(Lines)
-    motion_token_string = ['']
-    motion_head = []
-    motion_heading = []
-    motion_tailing = []
-    motion_token = torch.zeros((1, 263))
-    for i, line in enumerate(Lines):
-        count += 1
-        if len(line.split('#')) == 1:
-            texts.append(line)
+def generate_motion(model, text_prompt: str, max_length: int = 196):
+    """Generate motion from a text prompt using the loaded model."""
+    logger.info(f"Generating motion for: '{text_prompt}'")
+    
+    device = next(model.parameters()).device
+    
+    # Prepare a batch for inference
+    batch = {'text': [text_prompt], 'length': [max_length]}
+    
+    with torch.no_grad():
+        # The model's forward_test method handles the generation logic
+        output = model.forward_test(batch)
+        
+        # The output format can vary, so we handle different keys
+        if 'motion' in output:
+            motion = output['motion'][0]
         else:
-            feat_path = line.split('#')[1].replace('\n', '')
-            if os.path.exists(feat_path):
-                feats = torch.tensor(np.load(feat_path), device=model.device)
-                feats = model.datamodule.normalize(feats)
+            motion_tokens = output.get('pred_motions', output.get('motion_tokens'))
+            motion = model.vae.decode(motion_tokens[0:1])[0]
+            
+    motion_np = motion.detach().cpu().numpy()
+    
+    logger.info(f"Generated motion of shape: {motion_np.shape}")
+    return motion_np
 
-                motion_lengths[i] = feats.shape[0]
-                motion_token, _ = model.vae.encode(feats[None])
 
-                motion_token_string = motion_token_to_string(
-                    motion_token, [motion_token.shape[1]])[0]
-                motion_token_length = motion_token.shape[1]
+def save_motion(motion: np.ndarray, text_prompt: str, cfg, checkpoint_path: str, output_dir: Path):
+    """Save the generated motion and accompanying metadata."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_name = cfg.model.params.lm.params.get("model_name", "model")
+    
+    # Create a unique filename
+    motion_filename = f"{model_name}_{timestamp}.npy"
+    motion_path = output_dir / motion_filename
+    
+    # Save the motion array
+    np.save(motion_path, motion)
+    logger.info(f"Motion saved to: {motion_path}")
+    
+    # Save metadata to a text file
+    info_path = output_dir / f"{model_name}_{timestamp}.txt"
+    with open(info_path, 'w') as f:
+        f.write(f"Text Prompt: {text_prompt}\n")
+        f.write(f"Motion Shape: {motion.shape}\n")
+        f.write(f"Model Config: {cfg.CONFIG_PATH}\n")
+        f.write(f"Checkpoint: {checkpoint_path}\n")
+        f.write(f"Generated On: {datetime.now()}\n")
+        
+    logger.info(f"Motion metadata saved to: {info_path}")
+    return motion_path
 
-                motion_splited = motion_token_string.split('>')
 
-                split = motion_token_length // 5 + 1
-                split2 = motion_token_length // 4 + 1
-                split3 = motion_token_length // 4 * 3 + 1
-
-                motion_head.append(motion_token[:, :motion_token.shape[1] //
-                                                5][0])
-
-                motion_heading.append(feats[:feats.shape[0] // 4])
-
-                motion_tailing.append(feats[feats.shape[0] // 4 * 3:])
-
-                if '<Motion_Placeholder_s1>' in line:
-                    motion_joints[i] = model.feats2joints(
-                        feats)[:, :feats.shape[1] // 5]
-                else:
-                    motion_joints[i] = model.feats2joints(feats)
-
-                motion_split1 = '>'.join(
-                    motion_splited[:split]
-                ) + f'><motion_id_{model.codebook_size+1}>'
-                motion_split2 = f'<motion_id_{model.codebook_size}>' + '>'.join(
-                    motion_splited[split:])
-
-                motion_masked = '>'.join(
-                    motion_splited[:split2]
-                ) + '>' + f'<motion_id_{model.codebook_size+2}>' * (
-                    split3 - split2) + '>'.join(motion_splited[split3:])
-
-            texts.append(
-                line.split('#')[0].replace(
-                    '<motion>', motion_token_string).replace(
-                        '<Motion_Placeholder_s1>', motion_split1).replace(
-                            '<Motion_Placeholder_s2>', motion_split2).replace(
-                                '<Motion_Placeholder_Masked>', motion_masked))
-
-    return_dict = {
-        'text': texts,
-        'motion_joints': motion_joints,
-        'motion_lengths': motion_lengths,
-        'motion_token': motion_token,
-        'motion_token_string': motion_token_string,
-    }
-    if len(motion_head) > 0:
-        return_dict['motion_head'] = motion_head
-
-    if len(motion_heading) > 0:
-        return_dict['motion_heading'] = motion_heading
-
-    if len(motion_tailing) > 0:
-        return_dict['motion_tailing'] = motion_tailing
-
-    return return_dict
+def render_motion(motion_path: str, datamodule, output_path: str):
+    """Render the motion to a video based on the dataset type."""
+    dataset_name = datamodule.__class__.__name__.lower()
+    logger.info(f"Rendering motion for '{dataset_name}' dataset type...")
+    
+    try:
+        if "myoskeleton" in dataset_name:
+            # Use the MyoSkeleton renderer
+            rendered_path = render_myoskeleton_motion(
+                motion=motion_path,
+                output_path=output_path,
+                render_mode="skeleton"
+            )
+        elif "humanml3d" in dataset_name:
+            # Use the HumanML3D renderer
+            motion_data = np.load(motion_path)
+            render_humanml3d_motion(motion_data, [''], [output_path])
+            rendered_path = output_path
+        else:
+            logger.warning(f"No specific renderer for '{dataset_name}'. Skipping video generation.")
+            return None
+            
+        logger.info(f"✅ Motion rendered successfully to: {rendered_path}")
+        return rendered_path
+    except Exception as e:
+        logger.error(f"❌ Rendering failed: {e}")
+        logger.info("You may be able to render it manually using one of the quick_render scripts.")
+        return None
 
 
 def main():
-    # parse options
-    cfg = parse_args(phase="demo")  # parse config file
-    cfg.FOLDER = cfg.TEST.FOLDER
-
-    # create logger
-    logger = create_logger(cfg, phase="test")
-
-    task = cfg.DEMO.TASK
-    text = None
-
-    output_dir = Path(
-        os.path.join(cfg.FOLDER, str(cfg.model.target.split('.')[-2]), str(cfg.NAME),
-                     "samples_" + cfg.TIME))
+    # Use the new centralized argument parser
+    cfg = parse_args(phase="demo")
+    
+    output_dir = Path(cfg.DEMO.OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    logger.info(OmegaConf.to_yaml(cfg))
-
-    # set seed
-    pl.seed_everything(cfg.SEED_VALUE)
-
-    # gpu setting
-    if cfg.ACCELERATOR == "gpu":
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            str(x) for x in cfg.DEVICE)
-        device = torch.device("cuda")
-
-    # Dataset
-    datamodule = build_data(cfg)
-    logger.info("datasets module {} initialized".format("".join(
-        cfg.DATASET.target.split('.')[-2])))
-
-    # create model
-    total_time = time.time()
-    model = build_model(cfg, datamodule)
-    logger.info("model {} loaded".format(cfg.model.target))
-
-    # loading state dict
-    if cfg.TEST.CHECKPOINTS:
-        logger.info("Loading checkpoints from {}".format(cfg.TEST.CHECKPOINTS))
-        state_dict = torch.load(cfg.TEST.CHECKPOINTS,
-                                map_location="cpu")["state_dict"]
-        model.load_state_dict(state_dict)
-    else:
-        logger.warning(
-            "No checkpoints provided, using random initialized model")
-
-    model.to(device)
-
-    if cfg.DEMO.EXAMPLE:
-        # Check txt file input
-        # load txt
-        return_dict = load_example_input(cfg.DEMO.EXAMPLE, task, model)
-        text, in_joints = return_dict['text'], return_dict['motion_joints']
-
-    batch_size = 64
-    if text:
-        for b in tqdm(range(len(text) // batch_size + 1)):
-            text_batch = text[b * batch_size:(b + 1) * batch_size]
-            in_joints_batch = in_joints[b * batch_size:(b + 1) * batch_size]
-            batch = {
-                "length":
-                return_dict["motion_lengths"][b * batch_size:(b + 1) *
-                                              batch_size],
-                "text":
-                text_batch
-            }
-            if 'motion_head' in return_dict:
-                batch["motion"] = return_dict['motion_head'][b *
-                                                             batch_size:(b +
-                                                                         1) *
-                                                             batch_size]
-            if 'motion_heading' in return_dict:
-                batch["motion_heading"] = return_dict['motion_heading'][
-                    b * batch_size:(b + 1) * batch_size]
-            if 'motion_tailing' in return_dict:
-                batch["motion_tailing"] = return_dict['motion_tailing'][
-                    b * batch_size:(b + 1) * batch_size]
-
-            outputs = model(batch, task=cfg.model.params.task)
-            logger.info('Model forward finished! Start saving results...')
-            joints = outputs["joints"]
-            lengths = outputs["length"]
-            output_texts = outputs["texts"]
-
-            for i in range(len(joints)):
-                xyz = joints[i][:lengths[i]]
-                xyz = xyz[None]
-
-                try:
-                    xyz = xyz.detach().cpu().numpy()
-                    xyz_in = in_joints_batch[i][None].detach().cpu().numpy()
-                except:
-                    xyz = xyz.detach().numpy()
-                    xyz_in = in_joints[i][None].detach().numpy()
-
-                id = b * batch_size + i
-
-                np.save(os.path.join(output_dir, f'{id}_out.npy'), xyz)
-                np.save(os.path.join(output_dir, f'{id}_in.npy'), xyz_in)
-
-                with open(os.path.join(output_dir, f'{id}_in.txt'), 'w') as f:
-                    f.write(text_batch[i])
-
-                with open(os.path.join(output_dir, f'{id}_out.txt'), 'w') as f:
-                    f.write(output_texts[i])
-
-                # pose_vis = plot_3d.draw_to_batch(xyz_in, [''], [os.path.join(output_dir, f'{i}_in.gif')])
-                # pose_vis = plot_3d.draw_to_batch(xyz, [''], [os.path.join(output_dir, f'{i}_out.gif')])
-
-    total_time = time.time() - total_time
-    logger.info(
-        f'Total time spent: {total_time:.2f} seconds (including model loading time and exporting time).'
-    )
-    logger.info(f"Testing done, the npy are saved to {output_dir}")
+    
+    # Store the original config path for metadata
+    cfg.CONFIG_PATH = cfg.DEMO.CFG
+    
+    # Load the configuration and model
+    model, datamodule = load_model(cfg, cfg.DEMO.CHECKPOINT)
+    
+    try:
+        # Generate and save the motion
+        motion_np = generate_motion(model, cfg.DEMO.TEXT, cfg.DEMO.MAX_LENGTH)
+        motion_path = save_motion(motion_np, cfg.DEMO.TEXT, cfg, cfg.DEMO.CHECKPOINT, output_dir)
+        
+        # Render if requested
+        if cfg.DEMO.RENDER:
+            video_path = motion_path.with_suffix(".mp4")
+            render_motion(str(motion_path), datamodule, str(video_path))
+        
+        logger.info("🎉 Demo finished successfully!")
+        logger.info(f"📁 Outputs are saved in: {output_dir.resolve()}")
+        if not cfg.DEMO.RENDER:
+            logger.info("💡 To render the output, add the --render flag to your config or command line.")
+            
+    except Exception as e:
+        logger.error(f"❌ An error occurred during the demo: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    main() 

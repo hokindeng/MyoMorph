@@ -16,11 +16,6 @@ from pyrender.constants import RenderFlags
 # os.environ['DISPLAY'] = ':0.0'
 # os.environ['PYOPENGL_PLATFORM'] = 'egl'
 # os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
-SMPL_MODEL_DIR = "data/smpl_data/"
-
-
-def get_smpl_faces():
-    return np.load(os.path.join(SMPL_MODEL_DIR, "smplfaces.npy"))
 
 
 class WeakPerspectiveCamera(pyrender.Camera):
@@ -54,7 +49,6 @@ class Renderer:
         self.background = np.zeros((height, width, 3))
         self.resolution = resolution
 
-        self.faces = get_smpl_faces()
         self.orig_img = orig_img
         self.wireframe = wireframe
         self.renderer = pyrender.OffscreenRenderer(
@@ -106,8 +100,8 @@ class Renderer:
         """
 
     def render(self, img, verts, cam, angle=None, axis=None, mesh_filename=None, color=[1.0, 1.0, 0.9],
-               cam_pose=np.eye(4)):
-        mesh = trimesh.Trimesh(vertices=verts, faces=self.faces, process=False)
+               cam_pose=np.eye(4), faces=None):
+        mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
         Rx = trimesh.transformations.rotation_matrix(math.radians(180), [1, 0, 0])
         # Rx = trimesh.transformations.rotation_matrix(math.radians(-90), [1, 0, 0])
         mesh.apply_transform(Rx)

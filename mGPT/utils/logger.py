@@ -4,65 +4,71 @@ import time
 import logging
 from omegaconf import OmegaConf
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
-
-def create_logger(cfg, phase='train'):
-    # root dir set by cfg
-    root_output_dir = Path(cfg.FOLDER)
-    # set up logger
-    if not root_output_dir.exists():
-        print('=> creating {}'.format(root_output_dir))
-        root_output_dir.mkdir()
-
-    cfg_name = cfg.NAME
-    model = cfg.model.target.split('.')[-2]
-    cfg_name = os.path.basename(cfg_name).split('.')[0]
-
-    final_output_dir = root_output_dir / model / cfg_name
-    cfg.FOLDER_EXP = str(final_output_dir)
-
-    time_str = time.strftime('%Y-%m-%d-%H-%M-%S')
-
-    new_dir(cfg, phase, time_str, final_output_dir)
-
-    head = '%(asctime)-15s %(message)s'
-    logger = config_logger(final_output_dir, time_str, phase, head)
-    if logger is None:
-        logger = logging.getLogger()
-        logger.setLevel(logging.CRITICAL)
-        logging.basicConfig(format=head)
-    return logger
-
+from typing import Optional
 
 @rank_zero_only
-def config_logger(final_output_dir, time_str, phase, head):
-    log_file = '{}_{}_{}.log'.format('log', time_str, phase)
-    final_log_file = final_output_dir / log_file
-    logging.basicConfig(filename=str(final_log_file))
+def setup_logger(log_dir: str, phase: str = 'train') -> logging.Logger:
+    """
+    Set up a logger for training and evaluation.
+
+    Args:
+        log_dir (str): The directory to save the log file.
+        phase (str): The phase of the experiment ('train', 'test', 'demo', etc.).
+
+    Returns:
+        logging.Logger: The configured logger.
+    """
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    time_str = time.strftime('%Y-%m-%d-%H-%M')
+    log_file = log_dir / f'{phase}_{time_str}.log'
+
+    # Set up the logger
+    head = '%(asctime)-15s %(message)s'
+    logging.basicConfig(filename=str(log_file), format=head)
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
+
+    # Add a stream handler to also print to console
     console = logging.StreamHandler()
-    formatter = logging.Formatter(head)
-    console.setFormatter(formatter)
-    logging.getLogger('').addHandler(console)
-    file_handler = logging.FileHandler(final_log_file, 'w')
-    file_handler.setFormatter(logging.Formatter(head))
-    file_handler.setLevel(logging.INFO)
-    logging.getLogger('').addHandler(file_handler)
+    console.setFormatter(logging.Formatter(head))
+    logger.addHandler(console)
+
+    logger.info(f"Logger set up. Log file: {log_file}")
     return logger
 
-
 @rank_zero_only
-def new_dir(cfg, phase, time_str, final_output_dir):
-    # new experiment folder
-    cfg.TIME = str(time_str)
-    if os.path.exists(final_output_dir) and not os.path.exists(cfg.TRAIN.RESUME) and not cfg.DEBUG and phase not in ['test', 'demo']:
-        file_list = sorted(os.listdir(final_output_dir), reverse=True)
-        for item in file_list:
-            if item.endswith('.log'):
-                os.rename(str(final_output_dir), str(final_output_dir) + '_' + cfg.TIME)
-                break
-    final_output_dir.mkdir(parents=True, exist_ok=True)
-    # write config yaml
-    config_file = '{}_{}_{}.yaml'.format('config', time_str, phase)
-    final_config_file = final_output_dir / config_file
-    OmegaConf.save(config=cfg, f=final_config_file)
+def setup_experiment_dir(cfg: OmegaConf, phase: str = 'train') -> Path:
+    """
+    Set up the experiment directory and save the configuration file.
+
+    Args:
+        cfg (OmegaConf): The configuration object.
+        phase (str): The phase of the experiment.
+
+    Returns:
+        Path: The path to the experiment directory.
+    """
+    root_dir = Path(cfg.FOLDER)
+    
+    # Create a unique experiment name
+    model_name = cfg.model.target.split('.')[-2]
+    cfg_name = Path(cfg.NAME).stem
+    exp_name = f"{model_name}_{cfg_name}"
+    
+    # Add a timestamp to avoid overwriting
+    time_str = time.strftime('%Y-%m-%d-%H-%M-%S')
+    
+    exp_dir = root_dir / f"{exp_name}_{time_str}"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save the config to the experiment directory
+    config_path = exp_dir / f'config_{phase}.yaml'
+    OmegaConf.save(config=cfg, f=config_path)
+    
+    # Store the experiment directory path in the config for easy access
+    cfg.FOLDER_EXP = str(exp_dir)
+    
+    print(f"Experiment directory created: {exp_dir}")
+    return exp_dir
