@@ -1,4 +1,5 @@
 absl-py==2.3.0
+opencv-python==4.8.1.78
 aiofiles==24.1.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.12.13
@@ -120,7 +121,9 @@ Pygments==2.19.1
 PyOpenGL==3.1.0
 pyparsing==3.2.3
 pyrender==0.1.45
+transformers==4.21.0
 PySocks==1.7.1
+bert-score==0.3.13
 pytest==8.4.0
 pytest-shutil==1.8.1
 python-dateutil==2.9.0.post0

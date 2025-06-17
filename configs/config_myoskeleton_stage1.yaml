@@ -1,0 +1,82 @@
+# MyoSkeleton MotionGPT Stage 1: Motion Tokenizer Training
+# Complete replacement of HumanML3D with MyoSkeleton representation
+
+NAME: myoskeleton_stage1_vae
+DEBUG: false
+ACCELERATOR: 'gpu'
+DEVICE: [0]
+
+# Model configuration
+model:
+  target: mGPT.models.mgpt.MotionGPT
+  params:
+    stage: vae
+    debug: ${DEBUG}
+    codebook_size: 512
+    
+    # MyoSkeleton VQ-VAE
+    motion_vae:
+      target: mGPT.archs.mgpt_vae.MyoSkeletonVQVAE
+      params:
+        nfeats: 84  # 28 simplified joints * 3 = 84 features
+        quantizer: 'ema_reset'
+        code_dim: 512
+        nb_code: 512
+        mu: 0.99
+        down_t: 2
+        stride_t: 2
+        width: 512
+        depth: 3
+        dilation_growth_rate: 3
+        activation: 'relu'
+        norm: None
+
+# Data configuration  
+DATASET:
+  target: mGPT.data.myoskeleton_dataset.MyoSkeletonDataModule
+  params:
+    data_root: ./datasets/myoskeleton_h5/
+    batch_size: 32
+    num_workers: 8
+    use_simplified_joints: true
+    min_motion_len: 40
+    max_motion_len: 196
+    unit_length: 4
+    fps: 20
+
+# Training configuration
+TRAIN:
+  STAGE: vae
+  NUM_EPOCHS: 3000
+  RESUME: ''
+  PRETRAINED_VAE: ''
+  OPTIM:
+    TYPE: AdamW
+    LR: 2e-4
+    WEIGHT_DECAY: 1e-5
+    BETAS: [0.9, 0.99]
+  ABLATION:
+    SKIP_CONNECT: True
+    PE_TYPE: mld
+    DIFF_PE_TYPE: mld
+
+# Loss configuration
+LOSS:
+  TYPE: mGPT
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_COMMIT: 0.02
+  ABLATION:
+    RECONS_LOSS: l1_smooth
+
+# Logging and checkpoints
+LOGGER:
+  SAVER:
+    LOG_EVERY_STEPS: 100
+    VAL_EVERY_STEPS: 500
+    SAVE_EVERY_STEPS: 2000
+    
+# Evaluation
+TEST:
+  CHECKPOINTS: ./checkpoints/myoskeleton_stage1/
+  DATASETS: ['MyoSkeletonDataset'] 

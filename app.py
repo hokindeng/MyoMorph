@@ -16,8 +16,6 @@ from scipy.spatial.transform import Rotation as RRR
 import mGPT.render.matplot.plot_3d_global as plot_3d
 from mGPT.render.pyrender.hybrik_loc2rot import HybrIKJointsToRotmat
 from mGPT.render.pyrender.smpl_render import SMPLRender
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
-import librosa
 
 os.environ['DISPLAY'] = ':0.0'
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
@@ -34,21 +32,30 @@ else:
     device = torch.device("cpu")
 datamodule = build_data(cfg, phase="test")
 model = build_model(cfg, datamodule)
-state_dict = torch.load(cfg.TEST.CHECKPOINTS, map_location="cpu")["state_dict"]
-model.load_state_dict(state_dict)
-model.to(device)
 
-audio_processor = WhisperProcessor.from_pretrained(cfg.model.whisper_path)
-audio_model = WhisperForConditionalGeneration.from_pretrained(cfg.model.whisper_path).to(device)
-forced_decoder_ids = audio_processor.get_decoder_prompt_ids(language="zh", task="translate")
-forced_decoder_ids_zh = audio_processor.get_decoder_prompt_ids(language="zh", task="translate")
-forced_decoder_ids_en = audio_processor.get_decoder_prompt_ids(language="en", task="translate")
+# Handle missing checkpoint gracefully
+try:
+    if cfg.TEST.CHECKPOINTS and os.path.exists(cfg.TEST.CHECKPOINTS):
+        state_dict = torch.load(cfg.TEST.CHECKPOINTS, map_location="cpu")["state_dict"]
+        model.load_state_dict(state_dict)
+        print(f"✅ Loaded checkpoint from: {cfg.TEST.CHECKPOINTS}")
+    else:
+        print(f"⚠️  Checkpoint file not found: {cfg.TEST.CHECKPOINTS}")
+        print("📥 To download the model, run: bash prepare/download_pretrained_models.sh")
+        print("🚀 Continuing with randomly initialized model...")
+except Exception as e:
+    print(f"❌ Error loading checkpoint: {e}")
+    print("🚀 Continuing with randomly initialized model...")
+
+model.to(device)
 
 # HTML Style
 Video_Components = """
 <div class="side-video" style="position: relative;">
-    <video width="340" autoplay loop>
+    <video width="340" autoplay loop controls>
         <source src="file/{video_path}" type="video/mp4">
+        <source src="file/{video_path}" type="image/gif">
+        Your browser does not support the video tag.
     </video>
     <a class="videodl-button" href="file/{video_path}" download="{video_fname}" title="Download Video">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-video"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
@@ -63,6 +70,8 @@ Video_Components_example = """
 <div class="side-video" style="position: relative;">
     <video width="340" autoplay loop controls>
         <source src="file/{video_path}" type="video/mp4">
+        <source src="file/{video_path}" type="image/gif">
+        Your browser does not support the video tag.
     </video>
     <a class="npydl-button" href="file/{video_path}" download="{video_fname}" title="Download Video">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-video"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
@@ -97,49 +106,76 @@ def render_motion(data, feats, method='fast'):
     output_mp4_path = os.path.join(output_dir, video_fname)
     np.save(output_npy_path, feats)
 
-    if method == 'slow':
-        if len(data.shape) == 4:
-            data = data[0]
-        data = data - data[0, 0]
-        pose_generator = HybrIKJointsToRotmat()
-        pose = pose_generator(data)
-        pose = np.concatenate([
-            pose,
-            np.stack([np.stack([np.eye(3)] * pose.shape[0], 0)] * 2, 1)
-        ], 1)
-        shape = [768, 768]
-        render = SMPLRender(cfg.RENDER.SMPL_MODEL_PATH)
+    try:
+        if method == 'slow':
+            if len(data.shape) == 4:
+                data = data[0]
+            data = data - data[0, 0]
+            pose_generator = HybrIKJointsToRotmat()
+            pose = pose_generator(data)
+            pose = np.concatenate([
+                pose,
+                np.stack([np.stack([np.eye(3)] * pose.shape[0], 0)] * 2, 1)
+            ], 1)
+            shape = [768, 768]
+            render = SMPLRender(cfg.RENDER.SMPL_MODEL_PATH)
 
-        r = RRR.from_rotvec(np.array([np.pi, 0.0, 0.0]))
-        pose[:, 0] = np.matmul(r.as_matrix().reshape(1, 3, 3), pose[:, 0])
-        vid = []
-        aroot = data[[0], 0]
-        aroot[:, 1] = -aroot[:, 1]
-        params = dict(pred_shape=np.zeros([1, 10]),
-                      pred_root=aroot,
-                      pred_pose=pose)
-        render.init_renderer([shape[0], shape[1], 3], params)
-        for i in range(data.shape[0]):
-            renderImg = render.render(i)
-            vid.append(renderImg)
+            r = RRR.from_rotvec(np.array([np.pi, 0.0, 0.0]))
+            pose[:, 0] = np.matmul(r.as_matrix().reshape(1, 3, 3), pose[:, 0])
+            vid = []
+            aroot = data[[0], 0]
+            aroot[:, 1] = -aroot[:, 1]
+            params = dict(pred_shape=np.zeros([1, 10]),
+                          pred_root=aroot,
+                          pred_pose=pose)
+            render.init_renderer([shape[0], shape[1], 3], params)
+            for i in range(data.shape[0]):
+                renderImg = render.render(i)
+                vid.append(renderImg)
 
-        out = np.stack(vid, axis=0)
-        output_gif_path = output_mp4_path[:-4] + '.gif'
-        imageio.mimwrite(output_gif_path, out, duration=50)
-        out_video = mp.VideoFileClip(output_gif_path)
-        out_video.write_videofile(output_mp4_path)
-        del out, render
+            out = np.stack(vid, axis=0)
+            output_gif_path = output_mp4_path[:-4] + '.gif'
+            imageio.mimwrite(output_gif_path, out, duration=50)
+            
+            try:
+                out_video = mp.VideoFileClip(output_gif_path)
+                out_video.write_videofile(output_mp4_path, verbose=False, logger=None)
+                out_video.close()
+            except Exception as e:
+                print(f"MP4 conversion failed: {e}. Using GIF instead.")
+                # If MP4 fails, use GIF as fallback
+                output_mp4_path = output_gif_path
+                video_fname = fname + '.gif'
+            
+            del out, render
 
-    elif method == 'fast':
-        output_gif_path = output_mp4_path[:-4] + '.gif'
-        if len(data.shape) == 3:
-            data = data[None]
-        if isinstance(data, torch.Tensor):
-            data = data.cpu().numpy()
-        pose_vis = plot_3d.draw_to_batch(data, [''], [output_gif_path])
-        out_video = mp.VideoFileClip(output_gif_path)
-        out_video.write_videofile(output_mp4_path)
-        del pose_vis
+        elif method == 'fast':
+            output_gif_path = output_mp4_path[:-4] + '.gif'
+            if len(data.shape) == 3:
+                data = data[None]
+            if isinstance(data, torch.Tensor):
+                data = data.cpu().numpy()
+            pose_vis = plot_3d.draw_to_batch(data, [''], [output_gif_path])
+            
+            try:
+                out_video = mp.VideoFileClip(output_gif_path)
+                out_video.write_videofile(output_mp4_path, verbose=False, logger=None)
+                out_video.close()
+            except Exception as e:
+                print(f"MP4 conversion failed: {e}. Using GIF instead.")
+                # If MP4 fails, use GIF as fallback
+                output_mp4_path = output_gif_path
+                video_fname = fname + '.gif'
+            
+            del pose_vis
+
+    except Exception as e:
+        print(f"Motion rendering failed: {e}")
+        # Create a placeholder file if everything fails
+        with open(output_mp4_path.replace('.mp4', '_error.txt'), 'w') as f:
+            f.write(f"Motion rendering failed: {str(e)}")
+        output_mp4_path = output_mp4_path.replace('.mp4', '_error.txt')
+        video_fname = video_fname.replace('.mp4', '_error.txt')
 
     return output_mp4_path, video_fname, output_npy_path, feats_fname
 
@@ -201,29 +237,6 @@ def add_text(history, text, motion_uploaded, data_stored, method):
 
     return history, gr.update(value="",
                               interactive=False), motion_uploaded, data_stored
-
-
-def add_audio(history, audio_path, data_stored, language='en'):
-    audio, sampling_rate = librosa.load(audio_path, sr=16000)
-    input_features = audio_processor(
-        audio, sampling_rate, return_tensors="pt"
-    ).input_features  # whisper training sampling rate, do not modify
-    input_features = torch.Tensor(input_features).to(device)
-
-    if language == 'English':
-        forced_decoder_ids = forced_decoder_ids_en
-    else:
-        forced_decoder_ids = forced_decoder_ids_zh
-    predicted_ids = audio_model.generate(input_features,
-                                         forced_decoder_ids=forced_decoder_ids)
-    text_input = audio_processor.batch_decode(predicted_ids,
-                                              skip_special_tokens=True)
-    text_input = str(text_input).strip('[]"')
-    data_stored = data_stored + [{'user_input': text_input}]
-    gr.update(value=data_stored, interactive=False)
-    history = history + [(text_input, None)]
-
-    return history, data_stored
 
 
 def add_file(history, file, txt, motion_uploaded):
@@ -317,7 +330,7 @@ with gr.Blocks(css=customCSS) as demo:
     # Examples
     chat_instruct = gr.State([
         (None,
-         "👋 Hi, I'm MotionGPT! I can generate realistic human motion from text, or generate text from motion."
+         "👋 Hi, I'm MyoMorph! I can generate realistic human motion from text, or generate text from motion."
          ),
         (None,
          "💡 You can chat with me in pure text like generating human motion following your descriptions."
@@ -355,7 +368,7 @@ with gr.Blocks(css=customCSS) as demo:
         (None, "👉 Follow the examples and try yourself!"),
     ])
     chat_instruct_sum = gr.State([(None, '''
-         👋 Hi, I'm MotionGPT! I can generate realistic human motion from text, or generate text from motion.
+         👋 Hi, I'm MyoMorph! I can generate realistic human motion from text, or generate text from motion.
          
          1. You can chat with me in pure text like generating human motion following your descriptions.
          2. After generation, you can click the button in the top right of generation human motion result to download the human motion video or feature stored in .npy format.
@@ -491,12 +504,12 @@ with gr.Blocks(css=customCSS) as demo:
     })
     data_stored = gr.State([])
 
-    gr.Markdown("# MotionGPT")
+    gr.Markdown("# MyoMorph")
 
     chatbot = gr.Chatbot(Init_chatbot,
                          elem_id="mGPT",
                          height=600,
-                         label="MotionGPT",
+                         label="MyoMorph",
                          avatar_images=(None,
                                         ("assets/images/avatar_bot.jpg")),
                          bubble_full_width=False)
@@ -509,18 +522,15 @@ with gr.Blocks(css=customCSS) as demo:
                     show_label=False,
                     elem_id="textbox",
                     placeholder=
-                    "Enter text and press ENTER or speak to input. You can also upload motion.",
+                    "Enter text and press ENTER. You can also upload motion.",
                     container=False)
 
             with gr.Row():
-                aud = gr.Audio(sources=["microphone"],
-                               label="Speak input",
-                               type='filepath')
                 btn = gr.UploadButton("📁 Upload motion",
                                       elem_id="upload",
                                       file_types=["file"])
                 # regen = gr.Button("🔄 Regenerate", elem_id="regen")
-                clear = gr.ClearButton([txt, chatbot, aud], value='🗑️ Clear')
+                clear = gr.ClearButton([txt, chatbot], value='🗑️ Clear')
 
             with gr.Row():
                 gr.Markdown('''
@@ -540,12 +550,6 @@ with gr.Blocks(css=customCSS) as demo:
                                  elem_id="method",
                                  value="fast")
 
-            language = gr.Dropdown(["English", "中文"],
-                                   label="Speech language",
-                                   interactive=True,
-                                   elem_id="language",
-                                   value="English")
-
     txt_msg = txt.submit(
         add_text, [chatbot, txt, motion_uploaded, data_stored, method],
         [chatbot, txt, motion_uploaded, data_stored],
@@ -557,11 +561,6 @@ with gr.Blocks(css=customCSS) as demo:
     file_msg = btn.upload(add_file, [chatbot, btn, txt, motion_uploaded],
                           [chatbot, txt, motion_uploaded],
                           queue=False)
-    aud_msg = aud.stop_recording(
-        add_audio, [chatbot, aud, data_stored, language],
-        [chatbot, data_stored],
-        queue=False).then(bot, [chatbot, motion_uploaded, data_stored, method],
-                          [chatbot, motion_uploaded, data_stored])
     # regen_msg = regen.click(bot,
     #                         [chatbot, motion_uploaded, data_stored, method],
     #                         [chatbot, motion_uploaded, data_stored],

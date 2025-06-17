@@ -1,0 +1,98 @@
+# MyoSkeleton MotionGPT Stage 2: Motion-Language Pretraining
+# Pretrain T5 with MyoSkeleton motion tokens
+
+NAME: myoskeleton_stage2_pretrain
+DEBUG: false
+ACCELERATOR: 'gpu'
+DEVICE: [0]
+
+# Model configuration
+model:
+  target: mGPT.models.mgpt.MotionGPT
+  params:
+    stage: lm_pretrain
+    debug: ${DEBUG}
+    codebook_size: 512
+    condition: text
+    task: t2m
+    
+    # Frozen MyoSkeleton VQ-VAE (from Stage 1)
+    motion_vae:
+      target: mGPT.archs.mgpt_vae.MyoSkeletonVQVAE
+      params:
+        nfeats: 84  # 28 simplified joints * 3
+        quantizer: 'ema_reset'
+        code_dim: 512
+        nb_code: 512
+        mu: 0.99
+        down_t: 2
+        stride_t: 2
+        width: 512
+        depth: 3
+        dilation_growth_rate: 3
+        activation: 'relu'
+        norm: None
+    
+    # T5 Language Model with MyoSkeleton tokens
+    lm:
+      target: mGPT.archs.mgpt_lm.MLM
+      params:
+        model_path: t5-base
+        condition: text
+        task: t2m
+        stage: lm_pretrain
+        # Extended vocabulary: 32100 (T5) + 512 (motion) + 3 (special) = 32615
+        motion_codebook_size: 512
+        framerate: 20
+        down_t: 2
+        predict_ratio: 0.2
+        inbetween_ratio: 0.25
+        max_length: 256
+        quota_ratio: 0.5
+
+# Data configuration
+DATASET:
+  target: mGPT.data.myoskeleton_dataset.MyoSkeletonDataModule
+  params:
+    data_root: ./datasets/myoskeleton_h5/
+    batch_size: 64  # Larger batch for language model training
+    num_workers: 8
+    use_simplified_joints: true
+    min_motion_len: 40
+    max_motion_len: 196
+    unit_length: 4
+    fps: 20
+    # Template instructions for pretraining
+    TASK_PATH: ./prepare/instructions/template_pretrain.json
+
+# Training configuration
+TRAIN:
+  STAGE: lm_pretrain
+  NUM_EPOCHS: 2000
+  RESUME: ''
+  PRETRAINED_VAE: ./checkpoints/myoskeleton_stage1/latest.ckpt  # Load Stage 1 VQ-VAE
+  OPTIM:
+    TYPE: AdamW
+    LR: 1e-4
+    WEIGHT_DECAY: 1e-4
+    BETAS: [0.9, 0.99]
+  SCHEDULER:
+    TYPE: cosine
+    WARMUP_EPOCHS: 50
+
+# Loss configuration
+LOSS:
+  TYPE: mGPT
+  LAMBDA_CLS: 1.0  # Language model loss weight
+
+# Logging and checkpoints
+LOGGER:
+  SAVER:
+    LOG_EVERY_STEPS: 100
+    VAL_EVERY_STEPS: 1000
+    SAVE_EVERY_STEPS: 5000
+
+# Evaluation
+TEST:
+  CHECKPOINTS: ./checkpoints/myoskeleton_stage2/
+  DATASETS: ['MyoSkeletonDataset'] 

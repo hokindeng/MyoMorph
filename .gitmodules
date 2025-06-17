@@ -1,0 +1,6 @@
+[submodule "myo_api"]
+	path = myo_api
+	url = https://github.com/myolab/myo_api.git
+[submodule "myo_model_internal"]
+	path = myo_model_internal
+	url = https://github.com/myolab/myo_model_internal.git

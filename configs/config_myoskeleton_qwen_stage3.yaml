@@ -1,0 +1,106 @@
+# MyoSkeleton MotionGPT Stage 3: Instruction Tuning with Qwen3-0.6B
+# Fine-tune Qwen3-0.6B for multi-task motion-language understanding
+
+NAME: myoskeleton_qwen_stage3_instruct
+DEBUG: false
+ACCELERATOR: 'gpu'
+DEVICE: [0]
+
+# Model configuration
+model:
+  target: mGPT.models.mgpt.MotionGPT
+  params:
+    stage: lm_instruct
+    debug: ${DEBUG}
+    codebook_size: 512
+    condition: text
+    task: t2m
+    metrics_dict: ['MyoSkeletonMetrics']
+    
+    # Frozen MyoSkeleton VQ-VAE
+    motion_vae:
+      target: mGPT.archs.mgpt_vae.MyoSkeletonVQVAE
+      params:
+        nfeats: 84  # 28 simplified joints * 3
+        quantizer: 'ema_reset'
+        code_dim: 512
+        nb_code: 512
+        mu: 0.99
+        down_t: 2
+        stride_t: 2
+        width: 512
+        depth: 3
+        dilation_growth_rate: 3
+        activation: 'relu'
+        norm: None
+    
+    # Fine-tuned Qwen3-0.6B Language Model
+    lm:
+      target: mGPT.archs.mgpt_lm_qwen.QwenMLM
+      params:
+        model_path: "Qwen/Qwen3-0.6B"
+        stage: lm_instruct
+        motion_codebook_size: 512
+        framerate: 20
+        down_t: 2
+        predict_ratio: 0.2
+        inbetween_ratio: 0.25
+        max_length: 512
+        quota_ratio: 0.5
+        enable_thinking: true  # Keep thinking enabled for complex reasoning
+        new_token_type: "insert"
+
+# Data configuration
+DATASET:
+  target: mGPT.data.myoskeleton_dataset.MyoSkeletonDataModule
+  params:
+    data_root: ./datasets/myoskeleton_h5/
+    batch_size: 24  # Even smaller batch for instruction tuning
+    num_workers: 8
+    use_simplified_joints: true
+    min_motion_len: 40
+    max_motion_len: 196
+    unit_length: 4
+    fps: 20
+    # Full instruction templates for fine-tuning
+    TASK_PATH: ./prepare/instructions/template_instructions.json
+
+# Training configuration
+TRAIN:
+  STAGE: lm_instruct
+  NUM_EPOCHS: 1000  # Fewer epochs for instruction tuning
+  RESUME: ''
+  PRETRAINED: ./checkpoints/myoskeleton_qwen_stage2/latest.ckpt  # Load Stage 2 pretrained model
+  OPTIM:
+    TYPE: AdamW
+    LR: 1e-5  # Very low learning rate for fine-tuning
+    WEIGHT_DECAY: 1e-4
+    BETAS: [0.9, 0.999]
+  SCHEDULER:
+    TYPE: cosine
+    WARMUP_EPOCHS: 50
+
+# Loss configuration
+LOSS:
+  TYPE: mGPT
+  LAMBDA_CLS: 1.0
+
+# Metrics for evaluation
+METRIC:
+  TYPE: ['MyoSkeletonMetrics']
+  MM_NUM_REPEATS: 20
+  MM_NUM_SAMPLES: 1000
+
+# Logging and checkpoints
+LOGGER:
+  SAVER:
+    LOG_EVERY_STEPS: 50
+    VAL_EVERY_STEPS: 200
+    SAVE_EVERY_STEPS: 1000
+
+# Evaluation
+TEST:
+  CHECKPOINTS: ./checkpoints/myoskeleton_qwen_stage3/
+  DATASETS: ['MyoSkeletonDataset']
+  FOLDER: ./results/myoskeleton_qwen_stage3/
+  TASKS: ['t2m', 'm2t', 'pred', 'inbetween'] 
